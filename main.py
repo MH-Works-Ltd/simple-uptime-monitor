@@ -441,7 +441,7 @@ class Monitor:
             Layout(name="chart", ratio=2)
         )
         
-        with Live(layout, console=self.console, refresh_per_second=4, auto_refresh=True) as live:
+        with Live(layout, console=self.console, refresh_per_second=4, auto_refresh=False) as live:
             while not self._stop.is_set():
                 tick_started = dt.datetime.now()
 
@@ -466,15 +466,17 @@ class Monitor:
                     )
                     next_heartbeat = now + dt.timedelta(hours=heartbeat_hours)
 
+                # Update display with latest data after ping cycle completes
+                layout["table"].update(self._render_table())
+                layout["chart"].update(self._render_chart())
+                live.refresh()  # Manually refresh only when we have new data
+                
                 # Sleep until next interval (keeping us close to a fixed cadence)
                 elapsed = (dt.datetime.now() - tick_started).total_seconds()
                 sleep_for = max(0.0, self.interval - elapsed)
-                # Update the table more often while we sleep, and allow interruption
+                # Just sleep without refreshing display (no flicker on SSH)
                 end_sleep = time.perf_counter() + sleep_for
                 while time.perf_counter() < end_sleep and not self._stop.is_set():
-                    # Update the live display with fresh table and chart data
-                    layout["table"].update(self._render_table())
-                    layout["chart"].update(self._render_chart())
                     try:
                         await asyncio.wait_for(self._stop.wait(), timeout=0.25)
                     except asyncio.TimeoutError:
@@ -493,12 +495,11 @@ class Monitor:
         table.add_column("Status", justify="center")
         table.add_column("Code", justify="right")
         table.add_column("Latency", justify="right")
+        table.add_column("Last Check", justify="right")
         table.add_column("Since", justify="right")
-        table.add_column("Next Check", justify="right")
         table.add_column("Next Alert", justify="right")
         table.add_column("OK/Fail", justify="right")
 
-        now = dt.datetime.now()
         for u, st in self.targets.items():
             status = st.last_status
             status_str = {
@@ -510,27 +511,24 @@ class Monitor:
             code_str = str(st.last_http_code) if st.last_http_code is not None else "-"
             lat_str = f"{st.last_latency_ms} ms" if st.last_latency_ms is not None else "-"
 
+            if st.last_check_ts:
+                last_check_str = st.last_check_ts.strftime("%H:%M:%S")
+            else:
+                last_check_str = "-"
+
             if st.last_change_ts:
-                since_delta = now - st.last_change_ts
-                since_str = human_delta(since_delta)
+                since_str = st.last_change_ts.strftime("%H:%M:%S")
             else:
                 since_str = "-"
 
-            if st.next_check_ts:
-                next_check_in = st.next_check_ts - now
-                next_check_str = human_delta(next_check_in) if next_check_in.total_seconds() > 0 else "now"
-            else:
-                next_check_str = "-"
-
             if st.is_bad and st.next_notify_ts:
-                next_in = st.next_notify_ts - now
-                next_str = human_delta(next_in) if next_in.total_seconds() > 0 else "now"
+                next_alert_str = st.next_notify_ts.strftime("%H:%M:%S")
             else:
-                next_str = "-"
+                next_alert_str = "-"
 
             okfail = f"{st.checks_ok}/{st.checks_fail}"
 
-            table.add_row(u, status_str, code_str, lat_str, since_str, next_check_str, next_str, okfail)
+            table.add_row(u, status_str, code_str, lat_str, last_check_str, since_str, next_alert_str, okfail)
 
         return table
 
