@@ -1,0 +1,4 @@
+# ntfy: ntfy.sh/test_monitor
+# One URL per line; comments and blanks are ignored
+https://postman-echo.com/status/200
+https://postman-echo.com/status/500

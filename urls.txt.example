@@ -1,0 +1,4 @@
+# ntfy: ntfy.sh/your_channel_name
+# One URL per line; comments and blanks are ignored
+https://internal.mycompany.com/api/health
+https://external.service/api/health
